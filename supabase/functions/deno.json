@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "cors_headers/": "./_shared/cors.ts"
+  },
+  "tasks": {
+    "start": "deno run --allow-net --allow-env index.ts"
+  }
+}

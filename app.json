@@ -33,11 +33,6 @@
       "favicon": "./assets/favicon.png"
     },
     "scheme": "aera-journal",
-    "extra": {
-      "eas": {
-        "projectId": "4fd26b03-dd28-47fd-b462-48a3f5300039"
-      }
-    },
     "plugins": [
       "expo-router",
       [
@@ -53,6 +48,12 @@
         }
       ]
     ],
-    "owner": "sahananarenx"
+    "owner": "sahananarenx",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "1b675520-2098-461d-9149-05e81a9580e5"
+      }
+    }
   }
 }
