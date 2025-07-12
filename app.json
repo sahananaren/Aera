@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Āera - Audio Journal",
-    "slug": "aera-journal",
+    "slug": "aera-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -23,19 +23,21 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.aera.journal"
+      "package": "com.aera.journal",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "scheme": "aera-journal",
-
     "extra": {
       "eas": {
         "projectId": "4fd26b03-dd28-47fd-b462-48a3f5300039"
       }
     },
-    
     "plugins": [
       "expo-router",
       [
@@ -50,6 +52,7 @@
           "photosPermission": "Allow Āera to access your photos so you can add them to your journal entries."
         }
       ]
-    ]
+    ],
+    "owner": "sahananarenx"
   }
 }
