@@ -1,0 +1,16 @@
+This file is a placeholder to ensure the emotions directory exists. 
+You'll need to add emotion icon images to this directory with names matching the ones referenced in the DailySummary component:
+
+- Excitement.png
+- Joy.png
+- Contentment.png
+- Pride.png
+- Sadness.png
+- Anxiety.png
+- Inadequacy.png
+- Regret.png
+- Anger.png
+- Emptiness.png
+- Restlessness.png
+- Overwhelm.png
+- No Emotion.png
