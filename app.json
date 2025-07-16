@@ -26,6 +26,8 @@
       "package": "com.aera.journal",
       "permissions": [
         "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
@@ -46,14 +48,21 @@
         {
           "photosPermission": "Allow Āera to access your photos so you can add them to your journal entries."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "owner": "sahananarenx",
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "1b675520-2098-461d-9149-05e81a9580e5"
+        "projectId": "a0604499-6562-47b2-a943-2a0cc5c7a461"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a0604499-6562-47b2-a943-2a0cc5c7a461"
     }
   }
 }

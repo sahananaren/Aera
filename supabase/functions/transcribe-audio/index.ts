@@ -161,8 +161,9 @@ Deno.serve(async (req: Request) => {
         sampleRateHertz: sampleRateHertz,
         languageCode: languageCode,
         enableAutomaticPunctuation: true,
-        model: 'default',
-        useEnhanced: true
+        model: 'latest_long',
+        useEnhanced: true,
+        audioChannelCount: 1
       },
       audio: {
         content: audio

@@ -11,6 +11,7 @@ import { PhotoUpload as PhotoUploadType } from '../../components/PhotoUpload';
 import JournalEditor from '../../components/JournalEditor';
 import RecordingWaveAnimation from '../../components/RecordingWaveAnimation';
 import { router } from 'expo-router';
+import { AndroidAudioEncoder, AndroidOutputFormat, IOSAudioQuality } from 'expo-av/build/Audio';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -115,50 +116,133 @@ export default function Record() {
   const handleStartRecording = async () => {
     try {
       console.log('[RECORD] Starting recording with dimension:', selectedDimension.name);
+      console.log('[RECORD] Platform:', Platform.OS);
+      console.log('[RECORD] Environment:', __DEV__ ? 'development' : 'production');
       
-      // Request permissions
-      const { status } = await Audio.requestPermissionsAsync();
+      // Request permissions with more detailed logging
+      console.log('[RECORD] Requesting microphone permissions...');
+      const { status, granted, canAskAgain } = await Audio.requestPermissionsAsync();
+      console.log('[RECORD] Permission result:', { status, granted, canAskAgain });
+      
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Please grant microphone permissions to record audio.');
+        console.error('[RECORD] Permission denied:', { status, granted, canAskAgain });
+        Alert.alert(
+          'Permission Required', 
+          'Microphone access is required to record audio. Please enable it in your device settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => {
+              if (Platform.OS === 'ios') {
+                // iOS settings URL
+                // Note: This would need expo-linking to implement
+                console.log('[RECORD] User should open iOS settings manually');
+              } else {
+                // Android settings URL
+                console.log('[RECORD] User should open Android settings manually');
+              }
+            }}
+          ]
+        );
         return;
       }
       
-      // Prepare recording
-      await Audio.setAudioModeAsync({
+      console.log('[RECORD] Microphone permission granted');
+      
+      // Prepare recording with platform-specific configuration
+      console.log('[RECORD] Setting audio mode...');
+      const audioModeConfig = {
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
+        staysActiveInBackground: true, // Changed: might cause issues in production
         interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-      });
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix
+      };
+      
+      try {
+        await Audio.setAudioModeAsync(audioModeConfig);
+        console.log('[RECORD] Audio mode set successfully');
+      } catch (audioModeError) {
+        console.error('[RECORD] Error setting audio mode:', audioModeError);
+        // Continue anyway, as this might not be critical
+      }
       
       // Create recording object
       const newRecording = new Audio.Recording();
       
-      // Configure for WAV recording (LINEAR16)
-      await newRecording.prepareToRecordAsync({
+      // Configure for WAV recording (LINEAR16) - optimal for Google Speech-to-Text
+      console.log('[RECORD] Preparing recording configuration...');
+      const recordingConfig = {
         android: {
           extension: '.wav',
-          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_DEFAULT,
-          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_DEFAULT,
+          outputFormat: AndroidOutputFormat.DEFAULT, // MediaRecorder.OutputFormat.DEFAULT (or whatever you're using)
+          audioEncoder: AndroidAudioEncoder.DEFAULT, // MediaRecorder.AudioEncoder.DEFAULT
           sampleRate: 16000,
           numberOfChannels: 1,
           bitRate: 256000,
         },
         ios: {
           extension: '.wav',
-          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+          audioQuality: IOSAudioQuality.HIGH,
           sampleRate: 16000,
           numberOfChannels: 1,
-          bitRate: 256000,
+          bitRate: 128000,
           linearPCMBitDepth: 16,
           linearPCMIsBigEndian: false,
           linearPCMIsFloat: false,
         },
-      });
+        web: {
+          mimeType: 'audio/webm',
+          bitsPerSecond: 128000,
+        },
+        windows: {
+          extension: '.wav',
+          outputFormat: AndroidOutputFormat.DEFAULT,
+          audioEncoder: AndroidAudioEncoder.DEFAULT,
+          sampleRate: 44100,
+          numberOfChannels: 1,
+          bitRate: 128000,
+        },
+        macos: {
+          extension: '.wav',
+          audioQuality: IOSAudioQuality.HIGH, // reuse iOS
+          sampleRate: 44100,
+          numberOfChannels: 1,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+      };
+      
+      console.log('[RECORD] Recording config for', Platform.OS, ':', recordingConfig[Platform.OS]);
+      
+      try {
+        await newRecording.prepareToRecordAsync(recordingConfig);
+        console.log('[RECORD] Recording prepared successfully');
+      } catch (prepareError) {
+        console.error('[RECORD] Error preparing recording:', prepareError);
+        if (prepareError instanceof Error) {
+          throw new Error(`Failed to prepare recording: ${prepareError.message}`);
+        } else {
+          console.error('[RECORD] Unknown error type:', prepareError);
+        }
+      }
       
       // Start recording
-      await newRecording.startAsync();
+      console.log('[RECORD] Starting recording...');
+      try {
+        await newRecording.startAsync();
+        console.log('[RECORD] Recording started successfully');
+      } catch (startError) {
+        console.error('[RECORD] Error starting recording:', startError);
+        if (startError instanceof Error) {
+          throw new Error(`Failed to start recording: ${startError.message}`);
+        }
+        else {
+          console.error('[RECORD] Unknown error type:', startError);
+        }
+      }
+      
       setRecording(newRecording);
       
       // Set up recording state
@@ -177,10 +261,44 @@ export default function Record() {
       // Store interval ID in recording object for cleanup
       (newRecording as any).durationInterval = durationInterval;
       
-      console.log('[RECORD] Recording started successfully');
+      console.log('[RECORD] Recording initialized with duration tracking');
     } catch (error) {
       console.error('[RECORD] Error starting recording:', error);
-      Alert.alert('Recording Error', 'Failed to start recording. Please try again.');
+
+      if (error instanceof Error) {
+        console.error('[RECORD] Error details:', {
+          message: error.message,
+          stack: error.stack,
+          platform: Platform.OS,
+          isDev: __DEV__,
+        });
+      } else {
+        console.error('[RECORD] Unknown error (not instance of Error):', {
+          value: error,
+          platform: Platform.OS,
+          isDev: __DEV__,
+        });
+      }
+      
+      let errorMessage = 'Failed to start recording. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('permission')) {
+          errorMessage = 'Microphone permission is required. Please enable it in device settings.';
+        } else if (error.message.includes('prepare')) {
+          errorMessage = 'Unable to prepare audio recording. Please check if another app is using the microphone.';
+        } else if (error.message.includes('start')) {
+          errorMessage = 'Unable to start recording. Please close other audio apps and try again.';
+        }
+      } else {
+        console.warn('[RECORD] Unknown error type:', error);
+      }
+      
+      Alert.alert('Recording Error', errorMessage);
+      
+      // Reset state on error
+      setRecordingState('idle');
+      setRecording(null);
     }
   };
 
@@ -251,42 +369,97 @@ export default function Record() {
       console.log('[RECORD] Recording stopped, URI:', uri);
       
       // Read the audio file as base64
+      console.log('[RECORD] Reading audio file...');
       const base64Audio = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64
       }); 
       
       console.log('[RECORD] Audio file read, size:', base64Audio.length);
       
-      // Use LINEAR16 encoding for WAV files 
-      const encoding = 'LINEAR16'; 
+      // Use LINEAR16 encoding for WAV files - optimal for Google Speech-to-Text
+      const encoding = 'LINEAR16';
       const sampleRate = 16000;
       
-      console.log(`[RECORD] Using encoding: ${encoding} for WAV file`);
+      console.log(`[RECORD] Using encoding: ${encoding} for WAV file on ${Platform.OS}`);
       
-      // Call the transcribe-audio Edge Function
+      // Call the transcribe-audio Edge Function with retry logic
       console.log('[RECORD] Calling transcribe-audio Edge Function...');
-      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
-        body: {
-          audio: base64Audio,
-          encoding: encoding,
-          sampleRateHertz: sampleRate,
-          languageCode: 'en-US'
+      
+      let transcriptionResult;
+      let lastError;
+      
+      // Retry transcription up to 3 times
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          console.log(`[RECORD] Transcription attempt ${attempt}/3`);
+          
+          const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+            body: {
+              audio: base64Audio,
+              encoding: encoding,
+              sampleRateHertz: sampleRate,
+              languageCode: 'en-US'
+            }
+          });
+          
+          if (error) {
+            console.error(`[RECORD] Transcription error (attempt ${attempt}):`, error);
+            lastError = error;
+            if (attempt === 3) {
+              throw error;
+            }
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            continue;
+          }
+          
+          console.log(`[RECORD] Transcription successful (attempt ${attempt}):`, data);
+          transcriptionResult = data;
+          break;
+          
+        } catch (invokeError) {
+          console.error(`[RECORD] Function invoke error (attempt ${attempt}):`, invokeError);
+          lastError = invokeError;
+          if (attempt === 3) {
+            throw invokeError;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
+      }
+      
+      if (!transcriptionResult) {
+        throw lastError || new Error('Transcription failed after 3 attempts');
+      }
+      
+      const data = transcriptionResult;
+      
+      // Validate and store the transcription result
+      const transcript = data?.transcript || '';
+      const wordCount = data?.wordCount || 0;
+      
+      console.log('[RECORD] Final transcription result:', {
+        transcript: transcript.substring(0, 100) + (transcript.length > 100 ? '...' : ''),
+        wordCount,
+        duration: recordingDuration
       });
       
-      if (error) {
-        console.error('[RECORD] Transcription error:', error);
-        Alert.alert('Transcription Error', 'Failed to transcribe audio. Please try again.');
+      if (!transcript || transcript.trim().length === 0) {
+        console.warn('[RECORD] Empty transcription result - allowing user to continue');
+        // Don't show this as an error, just proceed with empty transcript
+        setCompletedTranscript('');
+        setCompletedDuration(recordingDuration);
+        setCompletedWordCount(0);
         setRecordingState('idle');
+        setTranscript('');
+        setInterimTranscript('');
+        setShowJournalEditor(true);
         return;
       }
       
-      console.log('[RECORD] Transcription successful:', data);
-      
       // Store the transcription result
-      setCompletedTranscript(data.transcript || '');
+      setCompletedTranscript(transcript);
       setCompletedDuration(recordingDuration);
-      setCompletedWordCount(data.wordCount || 0);
+      setCompletedWordCount(wordCount);
       
       // Reset recording state
       setRecordingState('idle');
@@ -297,8 +470,44 @@ export default function Record() {
       setShowJournalEditor(true);
     } catch (error) {
       console.error('[RECORD] Error stopping recording:', error);
-      Alert.alert('Recording Error', 'Failed to process recording. Please try again.');
-      setRecordingState('idle');
+      
+      if (error instanceof Error) {
+        console.error('[RECORD] Error details:', {
+          message: error.message,
+          stack: error.stack,
+          platform: Platform.OS,
+          isDev: __DEV__
+        });
+
+        let errorMessage = 'Failed to process recording. Please try again.';
+        if (error.message.includes('transcribe') || error.message.includes('API')) {
+          errorMessage = 'Transcription service is temporarily unavailable. Please check your internet connection and try again.';
+        } else if (error.message.includes('file') || error.message.includes('URI')) {
+          errorMessage = 'Unable to read the recorded audio file. Please try recording again.';
+        }
+
+        // Show to user, log, etc.
+        Alert.alert(
+          'Recording Error',
+          errorMessage,
+          [
+            { text: 'Try Again', onPress: () => setRecordingState('idle') },
+            { text: 'Save Without Text', onPress: () => {
+              setCompletedTranscript('[Transcription failed - manual entry required]');
+              setCompletedDuration(recordingDuration);
+              setCompletedWordCount(0);
+              setRecordingState('idle');
+              setTranscript('');
+              setInterimTranscript('');
+              setShowJournalEditor(true);
+            }}
+          ]
+        );
+      } else {
+        console.error('[RECORD] Unknown error type:', error);
+        // Optionally still show fallback message
+        let errorMessage = 'An unknown error occurred. Please try again.';
+      }      
     } finally {
       // Clean up recording object
       setRecording(null);
