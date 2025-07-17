@@ -1,4 +1,4 @@
-import { corsHeaders } from 'cors_headers/';
+import { corsHeaders } from './_shared/cors';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 interface MonthlyRequest {

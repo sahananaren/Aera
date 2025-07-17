@@ -1,4 +1,4 @@
-import { corsHeaders } from 'cors_headers/';
+import { corsHeaders } from './_shared/cors';
 
 interface GeminiRequest {
   prompt: string;

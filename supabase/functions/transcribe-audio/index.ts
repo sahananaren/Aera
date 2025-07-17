@@ -1,4 +1,4 @@
-import { corsHeaders } from 'cors_headers/';
+import { corsHeaders } from './_shared/cors';
 
 interface TranscribeRequest {
   audio: string; // base64 encoded audio data
@@ -6,6 +6,7 @@ interface TranscribeRequest {
   sampleRateHertz?: number; // sample rate in Hertz (default: 16000)
   languageCode?: string; // language code (default: en-US)
 }
+
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight requests

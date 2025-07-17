@@ -1,7 +1,16 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "target": "es2017",               // or "es2015" minimum to support iterable Uint8Array
+    "lib": ["es2017", "dom"],         // includes ES features and browser APIs
+    "downlevelIteration": true,       // enables correct iteration of modern types like Uint8Array
+    "module": "esnext",
+    "moduleResolution": "node",
+    "strict": true,
+    "jsx": "react-native",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
   },
   "include": [
     "**/*.ts",
