@@ -27,8 +27,11 @@
       "versionCode": 3,
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ],
+      "requestLegacyExternalStorage": true
     },
     "privacyPolicy": "https://www.termsfeed.com/live/e5c2d1a9-f084-4b9f-87c8-637d72460515",
     "web": {
