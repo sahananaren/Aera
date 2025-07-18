@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-import AudioRecord from 'react-native-audio-record';
 import { useAuth } from '../../lib/auth'; 
 import { supabase } from '../../lib/supabase';
 import { PhotoUpload as PhotoUploadType } from '../../components/PhotoUpload';
@@ -100,63 +99,6 @@ const requestAndroidPermissions = async (): Promise<boolean> => {
   }
 };
 
-// Helper function to convert raw PCM to proper WAV format
-const convertPCMToWAV = (pcmData: Uint8Array, sampleRate: number = 16000): Uint8Array => {
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const byteRate = sampleRate * numChannels * bitsPerSample / 8;
-  const blockAlign = numChannels * bitsPerSample / 8;
-  const dataSize = pcmData.length;
-  const fileSize = 44 + dataSize;
-  
-  console.log('[RECORD] Converting PCM to WAV:', {
-    pcmDataLength: pcmData.length,
-    sampleRate,
-    numChannels,
-    bitsPerSample,
-    fileSize
-  });
-  
-  // Create WAV file buffer
-  const wavBuffer = new ArrayBuffer(fileSize);
-  const view = new DataView(wavBuffer);
-  
-  // Helper function to write string to buffer
-  const writeString = (offset: number, string: string) => {
-    for (let i = 0; i < string.length; i++) {
-      view.setUint8(offset + i, string.charCodeAt(i));
-    }
-  };
-  
-  try {
-    // Write WAV header
-    writeString(0, 'RIFF');                    // ChunkID
-    view.setUint32(4, fileSize - 8, true);    // ChunkSize (little endian)
-    writeString(8, 'WAVE');                   // Format
-    writeString(12, 'fmt ');                  // Subchunk1ID
-    view.setUint32(16, 16, true);             // Subchunk1Size (16 for PCM)
-    view.setUint16(20, 1, true);              // AudioFormat (1 for PCM)
-    view.setUint16(22, numChannels, true);    // NumChannels
-    view.setUint32(24, sampleRate, true);     // SampleRate
-    view.setUint32(28, byteRate, true);       // ByteRate
-    view.setUint16(32, blockAlign, true);     // BlockAlign
-    view.setUint16(34, bitsPerSample, true);  // BitsPerSample
-    writeString(36, 'data');                  // Subchunk2ID
-    view.setUint32(40, dataSize, true);       // Subchunk2Size
-    
-    // Copy PCM data to WAV buffer
-    const wavData = new Uint8Array(wavBuffer);
-    for (let i = 0; i < pcmData.length; i++) {
-      wavData[44 + i] = pcmData[i];
-    }
-    
-    console.log('[RECORD] WAV conversion successful, output size:', wavData.length);
-    return wavData;
-  } catch (error) {
-    console.error('[RECORD] Error in WAV conversion:', error);
-    throw new Error('Failed to convert PCM data to WAV format');
-  }
-};
 
 export default function Record() {
   const { user } = useAuth();
@@ -174,41 +116,6 @@ export default function Record() {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Configure AudioRecord for raw PCM recording
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      // Use app's cache directory for reliable file storage
-      const audioFileName = `recording_${Date.now()}.wav`;
-      const audioFilePath = `${FileSystem.cacheDirectory}${audioFileName}`;
-      
-      const audioRecordOptions = {
-        sampleRate: 16000,  // 16kHz for Google STT
-        channels: 1,        // Mono
-        bitsPerSample: 16,  // 16-bit PCM
-        audioSource: 6,     // VOICE_RECOGNITION
-        wavFile: audioFilePath // Use full path in cache directory
-      };
-      
-      console.log('[RECORD] Initializing AudioRecord with options:', audioRecordOptions);
-      console.log('[RECORD] Audio file will be saved to:', audioFilePath);
-      
-      try {
-        AudioRecord.init(audioRecordOptions);
-        console.log('[RECORD] AudioRecord initialized successfully');
-      } catch (initError) {
-        console.error('[RECORD] Error initializing AudioRecord:', initError);
-      }
-      
-      return () => {
-        console.log('[RECORD] Cleaning up AudioRecord...');
-        try {
-          AudioRecord.stop();
-        } catch (stopError) {
-          console.error('[RECORD] Error stopping AudioRecord during cleanup:', stopError);
-        }
-      };
-    }
-  }, []);
 
   // Helper function to get Aera gradient colors
   const getAeraGradientColors = () => {
@@ -235,6 +142,16 @@ export default function Record() {
       console.log('[RECORD] Starting recording with dimension:', selectedDimension.name);
       console.log('[RECORD] Platform:', Platform.OS);
       console.log('[RECORD] Environment: development');
+      
+      // Check if platform supports recording
+      if (Platform.OS === 'web') {
+        Alert.alert(
+          'Recording Not Available',
+          'Audio recording is not supported on web. Please use the iOS or Android app to record audio.',
+          [{ text: 'OK', style: 'default' }]
+        );
+        return;
+      }
       
       // Check Android storage permissions first
       if (Platform.OS === 'android') {
@@ -281,13 +198,8 @@ export default function Record() {
       
       console.log('[RECORD] Microphone permission granted');
 
-      // Use AudioRecord for Android, expo-av for iOS
-      if (Platform.OS === 'android') {
-        console.log('[RECORD] Starting AudioRecord for Android...');
-        AudioRecord.start();
-        setRecording(null); // No Audio.Recording object for Android
-      } else {
-        console.log('[RECORD] Starting expo-av recording for iOS...');
+      // Use expo-av for all platforms
+      console.log('[RECORD] Starting expo-av recording...');
         
         // Prepare recording with platform-specific configuration
         console.log('[RECORD] Setting audio mode...');
@@ -310,14 +222,14 @@ export default function Record() {
       // Create recording object
       const newRecording = new Audio.Recording();
       
-      // Configure for WAV recording (LINEAR16) - optimal for Google Speech-to-Text
+      // Configure for recording - optimized for Google Speech-to-Text
       console.log('[RECORD] Preparing recording configuration...');
       const recordingConfig = {
         android: {
           extension: '.m4a',
           outputFormat: AndroidOutputFormat.MPEG_4,
           audioEncoder: AndroidAudioEncoder.AAC,
-          sampleRate: 16000,
+          sampleRate: 44100,
           numberOfChannels: 1,
           bitRate: 128000,
         },
@@ -325,28 +237,6 @@ export default function Record() {
           extension: '.wav',
           audioQuality: IOSAudioQuality.HIGH,
           sampleRate: 16000,
-          numberOfChannels: 1,
-          bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
-        },
-        web: {
-          mimeType: 'audio/webm',
-          bitsPerSecond: 128000,
-        },
-        windows: {
-          extension: '.wav',
-          outputFormat: AndroidOutputFormat.DEFAULT,
-          audioEncoder: AndroidAudioEncoder.DEFAULT,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        macos: {
-          extension: '.wav',
-          audioQuality: IOSAudioQuality.HIGH, // reuse iOS
-          sampleRate: 44100,
           numberOfChannels: 1,
           bitRate: 128000,
           linearPCMBitDepth: 16,
@@ -385,7 +275,6 @@ export default function Record() {
       }
       
         setRecording(newRecording);
-      }
       
       // Set up recording state
       setRecordingState('recording');
@@ -401,12 +290,7 @@ export default function Record() {
       }, 100);
       
       // Store interval ID for cleanup
-      if (Platform.OS === 'ios' && recording) {
-        (recording as any).durationInterval = durationInterval;
-      } else {
-        // Store interval ID globally for Android (using a simple variable)
-        (globalThis as any).recordingInterval = durationInterval;
-      }
+      (globalThis as any).recordingInterval = durationInterval;
       
       console.log('[RECORD] Recording initialized with duration tracking');
     } catch (error) {
@@ -492,208 +376,47 @@ export default function Record() {
       // Update UI to show transcribing state
       setRecordingState('transcribing');
       
-      let uri: string;
-      
-      if (Platform.OS === 'android') {
-        // Stop AudioRecord
-        console.log('[RECORD] Stopping AudioRecord...');
-        
-        let audioFilePath: string;
-        try {
-          audioFilePath = await AudioRecord.stop();
-          console.log('[RECORD] AudioRecord stopped successfully, received path:', audioFilePath);
-          console.log('[RECORD] AudioRecord path type:', typeof audioFilePath);
-        } catch (stopError) {
-          console.error('[RECORD] Error stopping AudioRecord:', stopError);
-          throw new Error('Failed to stop AudioRecord: ' + (stopError instanceof Error ? stopError.message : 'Unknown error'));
-        }
-        
-        if (!audioFilePath || typeof audioFilePath !== 'string') {
-          throw new Error('AudioRecord.stop() returned invalid path: ' + audioFilePath);
-        }
-        
-        uri = audioFilePath;
-        console.log('[RECORD] Using AudioRecord URI:', uri);
-        
-        // Clear duration interval
-        if ((globalThis as any).recordingInterval) {
-          clearInterval((globalThis as any).recordingInterval);
-          (globalThis as any).recordingInterval = null;
-        }
-      } else {
-        // Stop expo-av recording
-        if (!recording) {
-          console.warn('[RECORD] No active recording to stop');
-          return;
-        }
-        
-        // Clear duration interval
-        if ((recording as any).durationInterval) {
-          clearInterval((recording as any).durationInterval);
-        }
-        
-        // Stop recording
-        await recording.stopAndUnloadAsync();
-        
-        // Get recording URI
-        const recordingUri = recording.getURI();
-        if (!recordingUri) {
-          throw new Error('Recording URI is null');
-        }
-        uri = recordingUri;
-        console.log('[RECORD] expo-av recording stopped, URI:', uri);
+      // Stop expo-av recording
+      if (!recording) {
+        console.warn('[RECORD] No active recording to stop');
+        return;
       }
+      
+      // Clear duration interval
+      if ((globalThis as any).recordingInterval) {
+        clearInterval((globalThis as any).recordingInterval);
+        (globalThis as any).recordingInterval = null;
+      }
+      
+      // Stop recording
+      await recording.stopAndUnloadAsync();
+      
+      // Get recording URI
+      const recordingUri = recording.getURI();
+      if (!recordingUri) {
+        throw new Error('Recording URI is null');
+      }
+      const uri = recordingUri;
+      console.log('[RECORD] expo-av recording stopped, URI:', uri);
       
       // Read the audio file as base64
       console.log('[RECORD] Reading audio file...');
       let base64Audio: string;
       
-      if (Platform.OS === 'android') {
-        try {
-          // Ensure we have the correct file path format
-          let normalizedUri = uri;
-          
-          // If the URI doesn't start with file:// or content://, try to normalize it
-          if (!uri.startsWith('file://') && !uri.startsWith('content://')) {
-            // Check if it's already an absolute path
-            if (uri.startsWith('/')) {
-              normalizedUri = `file://${uri}`;
-            } else {
-              // If it's a relative path, use the cache directory
-              normalizedUri = `${FileSystem.cacheDirectory}${uri}`;
-            }
-          }
-          
-          console.log('[RECORD] Original URI:', uri);
-          console.log('[RECORD] Normalized URI:', normalizedUri);
-          
-          // Try multiple approaches to access the file
-          let fileExists = false;
-          let workingUri = normalizedUri;
-          
-          // First try normalized URI
-          try {
-            const fileInfo = await FileSystem.getInfoAsync(normalizedUri);
-            console.log('[RECORD] Normalized file info:', fileInfo);
-            fileExists = fileInfo.exists;
-            workingUri = normalizedUri;
-          } catch (normalizedError) {
-            console.log('[RECORD] Normalized URI failed, trying original:', normalizedError);
-          }
-          
-          // If normalized doesn't work, try original URI
-          if (!fileExists) {
-            try {
-              const fileInfoOriginal = await FileSystem.getInfoAsync(uri);
-              console.log('[RECORD] Original file info:', fileInfoOriginal);
-              fileExists = fileInfoOriginal.exists;
-              workingUri = uri;
-            } catch (originalError) {
-              console.log('[RECORD] Original URI also failed:', originalError);
-            }
-          }
-          
-          // If still no luck, try with cache directory prefix
-          if (!fileExists) {
-            const cacheUri = `${FileSystem.cacheDirectory}${uri.replace(/^.*\//, '')}`;
-            try {
-              const cacheFileInfo = await FileSystem.getInfoAsync(cacheUri);
-              console.log('[RECORD] Cache file info:', cacheFileInfo);
-              fileExists = cacheFileInfo.exists;
-              workingUri = cacheUri;
-            } catch (cacheError) {
-              console.log('[RECORD] Cache URI also failed:', cacheError);
-            }
-          }
-          
-          if (!fileExists) {
-            throw new Error(`Audio file not found at any of the attempted paths: ${uri}, ${normalizedUri}, ${FileSystem.cacheDirectory}${uri.replace(/^.*\//, '')}`);
-          }
-          
-          // AudioRecord produces raw PCM data, convert to WAV
-          console.log('[RECORD] Reading PCM data from:', workingUri);
-          const pcmData = await FileSystem.readAsStringAsync(workingUri, {
-            encoding: FileSystem.EncodingType.Base64
-          });
-          
-          console.log('[RECORD] Raw PCM data read, size:', pcmData.length);
-          
-          if (!pcmData || pcmData.length === 0) {
-            throw new Error('PCM data is empty or null');
-          }
-          
-          // Convert base64 PCM to Uint8Array
-          let pcmBytes: Uint8Array;
-          try {
-            pcmBytes = Uint8Array.from(atob(pcmData), c => c.charCodeAt(0));
-            console.log('[RECORD] PCM bytes array created, length:', pcmBytes.length);
-          } catch (decodeError) {
-            console.error('[RECORD] Error decoding base64 PCM:', decodeError);
-            throw new Error('Failed to decode base64 PCM data');
-          }
-          
-          // Validate PCM data size
-          if (pcmBytes.length < 1000) {
-            console.warn('[RECORD] PCM data seems too small:', pcmBytes.length);
-          }
-          
-          // Convert PCM to WAV
-          try {
-            const wavData = convertPCMToWAV(pcmBytes, 16000);
-            console.log('[RECORD] WAV data created, length:', wavData.length);
-            
-            // Convert WAV back to base64 - handle large arrays properly
-            let base64String = '';
-            const chunkSize = 32768; // Process in chunks to avoid memory issues
-            
-            for (let i = 0; i < wavData.length; i += chunkSize) {
-              const chunk = wavData.slice(i, i + chunkSize);
-              base64String += btoa(String.fromCharCode(...chunk));
-            }
-            
-            base64Audio = base64String;
-            console.log('[RECORD] PCM converted to WAV, final base64 size:', base64Audio.length);
-          } catch (conversionError) {
-            console.error('[RECORD] Error in PCM to WAV conversion:', conversionError);
-            throw new Error('Failed to convert PCM to WAV format');
-          }
-          
-        } catch (androidError) {
-          console.error('[RECORD] Android audio processing error:', androidError);
-          // If file reading fails completely, try direct approach
-          if (androidError instanceof Error && (androidError.message.includes('not found') || androidError.message.includes('Failed to read'))) {
-            console.log('[RECORD] Attempting direct file read...');
-            try {
-              base64Audio = await FileSystem.readAsStringAsync(uri, {
-                encoding: FileSystem.EncodingType.Base64
-              });
-              console.log('[RECORD] Direct read successful, size:', base64Audio.length);
-            } catch (directError) {
-              console.error('[RECORD] Direct read also failed:', directError);
-              const errorMessage = androidError instanceof Error ? androidError.message : 'Unknown error';
-              throw new Error(`Unable to read audio file: ${errorMessage}`);
-            }
-          } else {
-            throw androidError;
-          }
-        }
-      } else {
-        // iOS already produces WAV
-        try {
-          base64Audio = await FileSystem.readAsStringAsync(uri, {
-            encoding: FileSystem.EncodingType.Base64
-          });
-          console.log('[RECORD] WAV file read, size:', base64Audio.length);
-        } catch (iosError) {
-          console.error('[RECORD] iOS file read error:', iosError);
-          const errorMessage = iosError instanceof Error ? iosError.message : 'Unknown error';
-          throw new Error(`Unable to read iOS audio file: ${errorMessage}`);
-        }
+      try {
+        base64Audio = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64
+        });
+        console.log('[RECORD] Audio file read, size:', base64Audio.length);
+      } catch (fileError) {
+        console.error('[RECORD] File read error:', fileError);
+        const errorMessage = fileError instanceof Error ? fileError.message : 'Unknown error';
+        throw new Error(`Unable to read audio file: ${errorMessage}`);
       }
       
-      // Both platforms now produce LINEAR16 WAV
-      const encoding = 'LINEAR16';
-      const sampleRate = 16000;
+      // Determine encoding based on platform
+      const encoding = Platform.OS === 'android' ? 'MP4' : 'LINEAR16';
+      const sampleRate = Platform.OS === 'android' ? 44100 : 16000;
       
       console.log(`[RECORD] Using encoding: ${encoding} for both platforms`);
       
