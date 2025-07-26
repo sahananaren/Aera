@@ -79,20 +79,10 @@ type RecordingState = 'idle' | 'recording' | 'paused' | 'transcribing';
 
 // Helper function to request Android permissions at runtime
 const requestAndroidPermissions = async (): Promise<boolean> => {
-  if (Platform.OS !== 'android') {
-    return true;
-  }
-
+  if (Platform.OS !== 'android') return true;
   try {
-    console.log('[RECORD] Requesting Android permissions...');
-    
-    // For React Native, we need to check if we have the necessary permissions
-    // This is a placeholder - in a real app, you'd use react-native-permissions
-    // or similar library to check/request permissions at runtime
-    
-    // For now, we'll assume permissions are granted if they're in the manifest
-    console.log('[RECORD] Android permissions assumed granted from manifest');
-    return true;
+    const { status } = await Audio.requestPermissionsAsync();
+    return status === 'granted';
   } catch (error) {
     console.error('[RECORD] Error requesting Android permissions:', error);
     return false;
@@ -115,6 +105,7 @@ export default function Record() {
   const [completedPhotos, setCompletedPhotos] = useState<string[]>([]);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
 
   // Helper function to get Aera gradient colors
@@ -201,7 +192,7 @@ export default function Record() {
       // Use expo-av for all platforms
       console.log('[RECORD] Starting expo-av recording...');
         
-        // Prepare recording with platform-specific configuration
+      // Prepare recording with platform-specific configuration
         console.log('[RECORD] Setting audio mode...');
       const audioModeConfig = {
         allowsRecordingIOS: true,
@@ -228,8 +219,8 @@ export default function Record() {
         android: {
           extension: '.m4a',
           outputFormat: AndroidOutputFormat.MPEG_4,
-          audioEncoder: AndroidAudioEncoder.AAC,
-          sampleRate: 44100,
+          audioEncoder: AndroidAudioEncoder.AAC, // Expo does not support PCM_16BIT; use AAC and convert to LINEAR16 on server if needed
+          sampleRate: 16000,
           numberOfChannels: 1,
           bitRate: 128000,
         },
@@ -243,6 +234,7 @@ export default function Record() {
           linearPCMIsBigEndian: false,
           linearPCMIsFloat: false,
         },
+        web: {}, // Add minimal web config to satisfy type checker
       };
       
       console.log('[RECORD] Recording config for', Platform.OS, ':', recordingConfig[Platform.OS as keyof typeof recordingConfig]);
@@ -290,7 +282,7 @@ export default function Record() {
       }, 100);
       
       // Store interval ID for cleanup
-      (globalThis as any).recordingInterval = durationInterval;
+      recordingIntervalRef.current = durationInterval;
       
       console.log('[RECORD] Recording initialized with duration tracking');
     } catch (error) {
@@ -337,8 +329,9 @@ export default function Record() {
         await recording.pauseAsync();
         
         // Clear duration interval
-        if ((recording as any).durationInterval) {
-          clearInterval((recording as any).durationInterval);
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
         }
         
         setRecordingState('paused');
@@ -361,7 +354,7 @@ export default function Record() {
         }, 100);
         
         // Store interval ID in recording object for cleanup
-        (recording as any).durationInterval = durationInterval;
+        recordingIntervalRef.current = durationInterval;
         
         setRecordingState('recording');
         console.log('[RECORD] Recording resumed');
@@ -383,9 +376,9 @@ export default function Record() {
       }
       
       // Clear duration interval
-      if ((globalThis as any).recordingInterval) {
-        clearInterval((globalThis as any).recordingInterval);
-        (globalThis as any).recordingInterval = null;
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
       }
       
       // Stop recording
@@ -398,7 +391,14 @@ export default function Record() {
       }
       const uri = recordingUri;
       console.log('[RECORD] expo-av recording stopped, URI:', uri);
-      
+
+      // Check file existence and log info
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      console.log('[RECORD] File info:', fileInfo);
+      if (!fileInfo.exists) {
+        throw new Error('Audio file does not exist at URI: ' + uri);
+      }
+
       // Read the audio file as base64
       console.log('[RECORD] Reading audio file...');
       let base64Audio: string;
@@ -415,8 +415,8 @@ export default function Record() {
       }
       
       // Determine encoding based on platform
-      const encoding = Platform.OS === 'android' ? 'MP4' : 'LINEAR16';
-      const sampleRate = Platform.OS === 'android' ? 44100 : 16000;
+      const encoding = 'LINEAR16';
+      const sampleRate = 16000;
       
       console.log(`[RECORD] Using encoding: ${encoding} for both platforms`);
       
@@ -520,7 +520,7 @@ export default function Record() {
         if (error.message.includes('transcribe') || error.message.includes('API')) {
           errorMessage = 'Transcription service is temporarily unavailable. Please check your internet connection and try again.';
         } else if (error.message.includes('file') || error.message.includes('URI')) {
-          errorMessage = 'Unable to read the recorded audio file. Please try recording again.';
+          errorMessage = 'Unable to read the recorded audio file. Please check permissions and try again.';
         }
 
         // Show to user, log, etc.
@@ -556,8 +556,9 @@ export default function Record() {
       // Stop any active recording
       if (recording) {
         // Clear duration interval
-        if ((recording as any).durationInterval) {
-          clearInterval((recording as any).durationInterval);
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
         }
         
         await recording.stopAndUnloadAsync();
