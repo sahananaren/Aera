@@ -431,12 +431,10 @@ export default function Record() {
         try {
           console.log(`[RECORD] Transcription attempt ${attempt}/3`);
           
-          const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+          const { data, error } = await supabase.functions.invoke('transcribe-audio-whisper', {
             body: {
               audio: base64Audio,
-              encoding: encoding,
-              sampleRateHertz: sampleRate,
-              languageCode: 'en-US'
+              language: 'en'
             }
           });
           
